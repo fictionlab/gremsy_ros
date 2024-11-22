@@ -9,6 +9,7 @@
 #include "sensor_msgs/msg/imu.hpp"
 #include "geometry_msgs/msg/vector3_stamped.hpp"
 #include "geometry_msgs/msg/quaternion_stamped.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 
 #include "gremsy_wrapper_parameters.hpp"
@@ -39,6 +40,7 @@ namespace gremsy_wrapper
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
     rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_rotation_pub_;
     rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_encoder_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
 
     rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_rotation_sub_; //in degrees
     rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_velocity_sub_; //in degrees/s
@@ -62,13 +64,17 @@ namespace gremsy_wrapper
 
         this->update_parameters();
 
+        // Publishers
         this->imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("~/imu_raw", 1);
         this->gimbal_rotation_pub_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/rotation", 1);
         this->gimbal_encoder_pub_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/encoder", 1);
+        this->joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>("~/joint_states", 1);
 
+        // Subscriptions
         this->gimbal_rotation_sub_ = this->create_subscription<geometry_msgs::msg::Vector3Stamped>("~/gimbal_goal", 1, std::bind(&GremsyWrapper::desired_rotation_callback, this, std::placeholders::_1));
         this->gimbal_velocity_sub_ = this->create_subscription<geometry_msgs::msg::Vector3Stamped>("~/gimbal_velocity", 1, std::bind(&GremsyWrapper::desired_velocity_callback, this, std::placeholders::_1));
 
+        // Services
         this->enable_lock_mode_service_ = this->create_service<std_srvs::srv::SetBool>("~/lock_mode", std::bind(&GremsyWrapper::enable_lock_mode_callback, this, std::placeholders::_1, std::placeholders::_2));
 
         serial_port_ = new Serial_Port(params_.com_port.c_str(), params_.baud_rate);
@@ -139,8 +145,6 @@ namespace gremsy_wrapper
         RCLCPP_INFO(this->get_logger(), "Pitch max: %d -- Pitch min: %d" , angle_limit.angle_max, angle_limit.angle_min);
         angle_limit = gimbal_interface_->get_limit_angle_roll();
         RCLCPP_INFO(this->get_logger(), "Roll max: %d -- Roll min: %d" , angle_limit.angle_max, angle_limit.angle_min);
-        angle_limit = gimbal_interface_->get_limit_angle_yaw();
-        RCLCPP_INFO(this->get_logger(), "Yaw max: %d -- Yaw min: %d" , angle_limit.angle_max, angle_limit.angle_min);
 
         Gimbal_Interface:: gimbal_motor_control_t tilt, roll, pan;
         uint8_t gyro_filter, output_filter;
@@ -148,7 +152,6 @@ namespace gremsy_wrapper
 
         RCLCPP_INFO(this->get_logger(), "Tilt hold strength: %d -- Tilt stiffness: %d", tilt.holdstrength, tilt.stiffness);
         RCLCPP_INFO(this->get_logger(), "Roll hold strength: %d -- Roll stiffness: %d", roll.holdstrength, roll.stiffness);
-        RCLCPP_INFO(this->get_logger(), "Pan hold strength: %d -- Pan stiffness: %d", pan.holdstrength, pan.stiffness);
         RCLCPP_INFO(this->get_logger(), "Gyro filter: %d", gyro_filter);
         RCLCPP_INFO(this->get_logger(), "Output filter: %d\n", output_filter);
       }
@@ -157,8 +160,8 @@ namespace gremsy_wrapper
       {
         Gimbal_Interface::gimbal_motor_control_t tilt = { params_.tilt_stiffness, params_.tilt_hold_strength };
         Gimbal_Interface::gimbal_motor_control_t roll = { params_.roll_stiffness, params_.roll_hold_strength };
-        // Pan axis not used in tilt-roll 2-axis gimbal
-        Gimbal_Interface::gimbal_motor_control_t pan = { params_.pan_stiffness, params_.pan_hold_strength };
+        // Pan axis not used in tilt-roll 2-axis gimbal - using default values
+        Gimbal_Interface::gimbal_motor_control_t pan = { 50, 30 };
         const uint8_t gyro_filter = params_.gyro_filter;
         const uint8_t output_filter = params_.output_filter;
         gimbal_interface_->set_gimbal_motor_control(tilt, roll, pan, gyro_filter, output_filter);
@@ -173,9 +176,6 @@ namespace gremsy_wrapper
         limits.angle_min = params_.roll_min;
         limits.angle_max = params_.roll_max;
         gimbal_interface_->set_limit_angle_roll(limits);
-        limits.angle_min = params_.pan_min;
-        limits.angle_max = params_.pan_max;
-        gimbal_interface_->set_limit_angle_yaw(limits);
       }
 
       void set_gimbal_mode(int mode)
@@ -236,6 +236,12 @@ namespace gremsy_wrapper
         rotation.vector.y = encoder_attitude.pitch;
         rotation.vector.z = encoder_attitude.yaw;
         gimbal_encoder_pub_->publish(rotation);
+
+        // Publish joint state
+        sensor_msgs::msg::JointState joint_state;
+        joint_state.header.stamp = stamp;
+        joint_state.name = {"tilt", "roll"};
+
       }
 
       void gimbal_goal_timer_callback()
@@ -288,10 +294,10 @@ namespace gremsy_wrapper
 
       void desired_rotation_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg)
       {
-        // Limit roll, tilt and pan
+        // Limit roll and tilt
         msg->vector.x = std::fmin(std::fmax(msg->vector.x, params_.roll_min), params_.roll_max);
         msg->vector.y = std::fmin(std::fmax(msg->vector.y, params_.tilt_min), params_.tilt_max);
-        msg->vector.z = std::fmin(std::fmax(msg->vector.z, params_.pan_min), params_.pan_max);
+        msg->vector.z = 0; // Pan axis not used in tilt-roll 2-axis gimbal
 
         RCLCPP_INFO(this->get_logger(), "New goal received: x: '%.2f', y: '%.2f', z: '%.2f'", msg->vector.x, msg->vector.y, msg->vector.z);
         goal_ = msg;
@@ -302,9 +308,10 @@ namespace gremsy_wrapper
         // 180 degrees/s is the maximum speed for the gimbal
         msg->vector.x = std::fmin(std::fmax(msg->vector.x, -GIMBAL_MAX_VELOCITY), GIMBAL_MAX_VELOCITY);
         msg->vector.y = std::fmin(std::fmax(msg->vector.y, -GIMBAL_MAX_VELOCITY), GIMBAL_MAX_VELOCITY);
-        msg->vector.z = std::fmin(std::fmax(msg->vector.z, -GIMBAL_MAX_VELOCITY), GIMBAL_MAX_VELOCITY);
+        msg->vector.z = 0;
 
         RCLCPP_INFO(this->get_logger(), "New joint velocities requested: x: '%.2f', y: '%.2f', z: '%.2f'", msg->vector.x, msg->vector.y, msg->vector.z);
+        // Disable goal if velocity is set
         goal_ = nullptr;
 
         gimbal_interface_->set_gimbal_rotation_rate_sync(msg->vector.y, msg->vector.x, msg->vector.z);

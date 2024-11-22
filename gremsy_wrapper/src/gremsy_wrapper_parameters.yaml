@@ -43,19 +43,19 @@ gremsy_wrapper:
       bounds<>: [0, 100]
   tilt_max:
     type: int
-    default_value: 120
+    default_value: 90
     read_only: true
   tilt_min:
     type: int
-    default_value: -120
+    default_value: -90
     read_only: true
   roll_max:
     type: int
-    default_value: 180
+    default_value: 45
     read_only: true
   roll_min:
     type: int
-    default_value: -180
+    default_value: -45
     read_only: true
   gyro_filter:
     type: int
@@ -63,21 +63,4 @@ gremsy_wrapper:
   output_filter:
     type: int
     default_value: 1
-  # params not for 2 axis gimbal
-  pan_hold_strength:
-    type: int
-    default_value: 50
-    validation:
-      bounds<>: [0, 100]
-  pan_stiffness:
-    type: int
-    default_value: 30
-    validation:
-      bounds<>: [0, 100]
-  pan_max:
-    type: int
-    default_value: 180
-  pan_min:
-    type: int
-    default_value: -180
   
