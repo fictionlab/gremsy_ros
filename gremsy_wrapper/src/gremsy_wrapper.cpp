@@ -11,6 +11,7 @@
 #include "geometry_msgs/msg/quaternion_stamped.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_srvs/srv/set_bool.hpp"
+#include "std_srvs/srv/trigger.hpp"
 
 #include "gremsy_wrapper_parameters.hpp"
 
@@ -50,6 +51,8 @@ namespace gremsy_wrapper
     rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_velocity_sub_; //in degrees/s
 
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr enable_lock_mode_service_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr return_home_service_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reboot_service_;
   
     geometry_msgs::msg::Vector3Stamped::SharedPtr goal_;
     rclcpp::TimerBase::SharedPtr poll_timer_;
@@ -80,6 +83,8 @@ namespace gremsy_wrapper
 
         // Services
         this->enable_lock_mode_service_ = this->create_service<std_srvs::srv::SetBool>("~/lock_mode", std::bind(&GremsyWrapper::enable_lock_mode_callback, this, std::placeholders::_1, std::placeholders::_2));
+        this->return_home_service_ = this->create_service<std_srvs::srv::Trigger>("~/return_home", std::bind(&GremsyWrapper::return_home_callback, this, std::placeholders::_1, std::placeholders::_2));
+        this->reboot_service_ = this->create_service<std_srvs::srv::Trigger>("~/reboot", std::bind(&GremsyWrapper::reboot_callback, this, std::placeholders::_1, std::placeholders::_2));
 
         serial_port_ = new Serial_Port(params_.com_port.c_str(), params_.baud_rate);
         gimbal_interface_ = new Gimbal_Interface(serial_port_, 1, 191, Gimbal_Interface::MAVLINK_GIMBAL_V2, mavlink_channel_t::MAVLINK_COMM_0);
@@ -346,7 +351,55 @@ namespace gremsy_wrapper
 
           RCLCPP_INFO(this->get_logger(), "Changing gimbal mode to %s.", gimbal_mode_ == 1 ? "lock" : "follow");
         }
-    }
+      }
+
+      void return_home_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                const std::shared_ptr<std_srvs::srv::Trigger::Response> response){
+        goal_ = nullptr;
+        Gimbal_Protocol::result_t res = gimbal_interface_->set_gimbal_return_home_sync();
+        if (res == Gimbal_Protocol::SUCCESS){
+
+          attitude<float> cur_attitude = gimbal_interface_->get_gimbal_attitude();
+          int timeout = 0;
+          while (cur_attitude.pitch > 0.5f || cur_attitude.roll > 0.5f) {
+            if (timeout++ > TIMEOUT_TRY_NUM) {
+              response->success = false;
+              response->message = "Failed to return gimbal to home position in time";
+              RCLCPP_ERROR(this->get_logger(), "Failed to return gimbal to home position in time");
+              return;
+            }
+            rclcpp::sleep_for(500ms);
+            cur_attitude = gimbal_interface_->get_gimbal_attitude();
+          }
+          response->success = true;
+          response->message = "Gimbal returned to home position.";
+          RCLCPP_INFO(this->get_logger(), "Gimbal returned to home position.");
+        } else {
+          response->success = false;
+          response->message = "Failed to send return home command .";
+          RCLCPP_ERROR(this->get_logger(), "Failed to send return home command.");
+        }
+      }
+
+      void reboot_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                const std::shared_ptr<std_srvs::srv::Trigger::Response> response){
+
+        if (gimbal_interface_->set_gimbal_reboot() == Gimbal_Protocol::SUCCESS){
+          // Wait for reboot to complete
+          while (gimbal_interface_->get_gimbal_status().state != Gimbal_Interface::GIMBAL_STATE_ON) {
+            rclcpp::sleep_for(500ms);
+          }
+          goal_ = nullptr;
+
+          response->success = true;
+          response->message = "Gimbal rebooted.";
+          RCLCPP_INFO(this->get_logger(), "Gimbal rebooted.");
+        } else {
+          response->success = false;
+          response->message = "Failed to send reboot command.";
+          RCLCPP_ERROR(this->get_logger(), "Failed to send reboot command.");
+        }
+      }
     };
 
 } // namespace gremsy_wrapper
