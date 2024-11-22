@@ -546,7 +546,7 @@ void control_sample_gimbal_process(Gimbal_Interface &onboard){
             if(control_sample_gimbal_set_lock_mode(onboard) == true){
                 /// control gimbal moving
                 // control_sample_gimbal_set_move_angle(onboard, 40.f, 0.f, 170.f);
-                control_sample_gimbal_set_move_angle(onboard, 40.f, 0.f, 65.f);
+                control_sample_gimbal_set_move_angle(onboard, 100.f, 0.f, 65.f);
             }
         }
         break;

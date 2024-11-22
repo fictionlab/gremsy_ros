@@ -1175,6 +1175,7 @@ Gimbal_Interface::imu_t Gimbal_Interface::get_gimbal_raw_imu(void)
         /* Reset timestamps */
         _messages.timestamps.raw_imu = 0;
         const mavlink_raw_imu_t &raw = _messages.raw_imu;
+        pthread_mutex_unlock(&_messages.mutex);
         return imu_t(vector3<int16_t>(raw.xacc, raw.yacc, raw.zacc), vector3<int16_t>(raw.xgyro, raw.ygyro, raw.zgyro));
     }
 

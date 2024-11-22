@@ -1,0 +1,83 @@
+gremsy_wrapper:
+  com_port:
+    type: string
+    default_value: '/dev/ttyUSB0'
+    read_only: true
+  baud_rate:
+    type: int
+    default_value: 115200
+    read_only: true
+  state_poll_rate:
+    type: double
+    default_value: 10.0
+    read_only: true
+  goal_push_rate:
+    type: double
+    default_value: 10.0
+    read_only: true
+  gimbal_mode_on_startup:
+    type: int
+    default_value: 1 # 1: lock mode, 2: follow mode
+    read_only: true
+    validation:
+      one_of<>: [[1, 2]]
+  tilt_hold_strength:
+    type: int
+    default_value: 50
+    validation:
+      bounds<>: [0, 100]
+  tilt_stiffness:
+    type: int
+    default_value: 30
+    validation:
+      bounds<>: [0, 100]
+  roll_hold_strength:
+    type: int
+    default_value: 50
+    validation:
+      bounds<>: [0, 100]
+  roll_stiffness:
+    type: int
+    default_value: 30
+    validation:
+      bounds<>: [0, 100]
+  tilt_max:
+    type: int
+    default_value: 120
+    read_only: true
+  tilt_min:
+    type: int
+    default_value: -120
+    read_only: true
+  roll_max:
+    type: int
+    default_value: 180
+    read_only: true
+  roll_min:
+    type: int
+    default_value: -180
+    read_only: true
+  gyro_filter:
+    type: int
+    default_value: 5
+  output_filter:
+    type: int
+    default_value: 1
+  # params not for 2 axis gimbal
+  pan_hold_strength:
+    type: int
+    default_value: 50
+    validation:
+      bounds<>: [0, 100]
+  pan_stiffness:
+    type: int
+    default_value: 30
+    validation:
+      bounds<>: [0, 100]
+  pan_max:
+    type: int
+    default_value: 180
+  pan_min:
+    type: int
+    default_value: -180
+  
