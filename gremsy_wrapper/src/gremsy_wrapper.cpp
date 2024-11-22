@@ -22,6 +22,10 @@ namespace gremsy_wrapper
   constexpr double GIMBAL_IMU_ACCEL_SCALE = 0.00119634146; // This number is never provided - this is an educated guess
   constexpr int TIMEOUT_TRY_NUM = 10;
   constexpr double GIMBAL_MAX_VELOCITY = 180.0; // Degrees per second
+  constexpr int ENCODER_OFFSET_ROLL = 8192;
+  constexpr int ENCODER_OFFSET_TILT = 21304;
+  constexpr int ENCODER_RESOLUTION = 32768;
+  constexpr double PI = 3.141592653589793238463;
 
   class GremsyWrapper : public rclcpp::Node
   {
@@ -67,7 +71,7 @@ namespace gremsy_wrapper
         // Publishers
         this->imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("~/imu_raw", 1);
         this->gimbal_rotation_pub_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/rotation", 1);
-        this->gimbal_encoder_pub_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/encoder", 1);
+        this->gimbal_encoder_pub_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/encoders", 1);
         this->joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>("~/joint_states", 1);
 
         // Subscriptions
@@ -240,8 +244,10 @@ namespace gremsy_wrapper
         // Publish joint state
         sensor_msgs::msg::JointState joint_state;
         joint_state.header.stamp = stamp;
-        joint_state.name = {"tilt", "roll"};
-
+        joint_state.header.frame_id = "gimbal";
+        joint_state.name = {"gimbal_tilt_joint", "gimbal_roll_joint"};
+        joint_state.position = {get_angle_from_encoder(encoder_attitude.pitch, ENCODER_OFFSET_TILT), get_angle_from_encoder(encoder_attitude.roll, ENCODER_OFFSET_ROLL)};
+        joint_state_pub_->publish(joint_state);
       }
 
       void gimbal_goal_timer_callback()
@@ -250,24 +256,19 @@ namespace gremsy_wrapper
           return;
         }
 
-        //TODO check mavlink control
         // Pitch, roll, yaw
         Gimbal_Protocol::result_t res = gimbal_interface_->set_gimbal_rotation_sync(goal_->vector.y, goal_->vector.x, goal_->vector.z);
 
-        //if (res == Gimbal_Protocol::SUCCESS)
-        //{
-        //  attitude<float> cur_attitude = gimbal_interface_->get_gimbal_attitude();
-        //  if ((fabsf(cur_attitude.pitch - goal_->vector.y) <= 0.5f) && (fabsf(cur_attitude.roll - goal_->vector.x) <= 0.5f)) {
-        //    RCLCPP_INFO(this->get_logger(), "Goal reached");
-        //    goal_ = nullptr;
-        //  }
-        //} else {
-        //  RCLCPP_ERROR(this->get_logger(), "Failed to control gimbal");
-        //}
-
-        // Alternative way to control gimbal
-        //Gimbal_Protocol::result_t res = gimbal_interface_.set_gimbal_rotation_rate_sync(pitch_rate, 0.f, 0.f);
-
+        if (res == Gimbal_Protocol::SUCCESS)
+        {
+          attitude<float> cur_attitude = gimbal_interface_->get_gimbal_attitude();
+          if ((fabsf(cur_attitude.pitch - goal_->vector.y) <= 0.5f) && (fabsf(cur_attitude.roll - goal_->vector.x) <= 0.5f)) {
+            RCLCPP_INFO(this->get_logger(), "Goal reached");
+            goal_ = nullptr;
+          }
+        } else {
+          RCLCPP_ERROR(this->get_logger(), "Failed to control gimbal");
+        }
       }
 
       sensor_msgs::msg::Imu convert_mavlink_imu_to_ros_msg(Gimbal_Interface::imu_t raw_imu)
@@ -290,6 +291,16 @@ namespace gremsy_wrapper
         imu_msg.orientation.w = 1;
          
         return imu_msg;
+      }
+
+      // In Rad
+      double get_angle_from_encoder(int16_t encoder_value, int16_t encoder_offset)
+      {
+        int offset_value = encoder_value + encoder_offset;
+        // Make sure that offset value is within the encoder resolution
+        offset_value = (offset_value + ENCODER_RESOLUTION) % (2 * ENCODER_RESOLUTION) - ENCODER_RESOLUTION;
+
+        return PI * static_cast<double>(offset_value) / static_cast<double>(ENCODER_RESOLUTION);
       }
 
       void desired_rotation_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg)
