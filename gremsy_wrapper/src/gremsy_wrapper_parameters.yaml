@@ -1,7 +1,7 @@
 gremsy_wrapper:
   com_port:
     type: string
-    default_value: '/dev/ttyUSB0'
+    default_value: '/dev/ttyS4'
     read_only: true
   baud_rate:
     type: int
@@ -43,11 +43,11 @@ gremsy_wrapper:
       bounds<>: [0, 100]
   tilt_max:
     type: int
-    default_value: 90
+    default_value: 120
     read_only: true
   tilt_min:
     type: int
-    default_value: -90
+    default_value: -120
     read_only: true
   roll_max:
     type: int
