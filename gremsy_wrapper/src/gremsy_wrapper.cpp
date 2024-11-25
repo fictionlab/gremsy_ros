@@ -1,3 +1,6 @@
+// Copyright 2024 Fictionlab sp. z o.o.
+// All rights reserved.
+
 #include <chrono>
 #include <memory>
 #include <string>
@@ -20,7 +23,8 @@ using namespace std::chrono_literals;
 namespace gremsy_wrapper
 {
 // imu_raw_reading * imu_accel_scale = imu_accel in mili-g
-constexpr double GIMBAL_IMU_ACCEL_SCALE = 0.00119634146;   // This number is never provided - this is an educated guess
+// This number is never provided - this is an educated guess
+constexpr double GIMBAL_IMU_ACCEL_SCALE = 0.00119634146;
 constexpr int TIMEOUT_TRY_NUM = 10;
 constexpr double GIMBAL_MAX_VELOCITY = 180.0;   // Degrees per second
 constexpr int ENCODER_OFFSET_ROLL = 8192;
@@ -47,8 +51,10 @@ class GremsyWrapper : public rclcpp::Node
   rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_encoder_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
 
-  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_rotation_sub_;   //in degrees
-  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_velocity_sub_;   //in degrees/s
+  // In degrees
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_rotation_sub_;
+  // In degrees/s
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_velocity_sub_;
 
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr enable_lock_mode_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr return_home_service_;
@@ -123,7 +129,6 @@ public:
     goal_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 /
         params_.goal_push_rate), std::bind(&GremsyWrapper::gimbal_goal_timer_callback, this));
     check_timer_ = this->create_wall_timer(1s, std::bind(&GremsyWrapper::check_parameters, this));
-
   }
 
   ~GremsyWrapper()
@@ -394,10 +399,11 @@ private:
   {
     goal_ = nullptr;
     Gimbal_Protocol::result_t res = gimbal_interface_->set_gimbal_return_home_sync();
-    if (res == Gimbal_Protocol::SUCCESS) {
 
+    if (res == Gimbal_Protocol::SUCCESS) {
       attitude<float> cur_attitude = gimbal_interface_->get_gimbal_attitude();
       int timeout = 0;
+
       while (cur_attitude.pitch > 0.5f || cur_attitude.roll > 0.5f) {
         if (timeout++ > TIMEOUT_TRY_NUM) {
           response->success = false;
@@ -422,7 +428,6 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
     const std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
-
     if (gimbal_interface_->set_gimbal_reboot() == Gimbal_Protocol::SUCCESS) {
       // Wait for reboot to complete
       while (gimbal_interface_->get_gimbal_status().state != Gimbal_Interface::GIMBAL_STATE_ON) {
@@ -441,7 +446,7 @@ private:
   }
 };
 
-} // namespace gremsy_wrapper
+}  // namespace gremsy_wrapper
 
 #include "rclcpp_components/register_node_macro.hpp"
 RCLCPP_COMPONENTS_REGISTER_NODE(gremsy_wrapper::GremsyWrapper)
