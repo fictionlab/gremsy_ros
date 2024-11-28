@@ -42,20 +42,20 @@ gremsy_wrapper:
     validation:
       bounds<>: [0, 100]
   tilt_max:
-    type: int
-    default_value: 120
+    type: double
+    default_value: 2.0944
     read_only: true
   tilt_min:
-    type: int
-    default_value: -120
+    type: double
+    default_value: -2.0944
     read_only: true
   roll_max:
-    type: int
-    default_value: 45
+    type: double
+    default_value: 0.785398
     read_only: true
   roll_min:
     type: int
-    default_value: -45
+    default_value: -0.785398
     read_only: true
   gyro_filter:
     type: int

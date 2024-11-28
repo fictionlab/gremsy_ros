@@ -26,11 +26,13 @@ namespace gremsy_wrapper
 // This number is never provided - this is an educated guess
 constexpr double GIMBAL_IMU_ACCEL_SCALE = 0.00119634146;
 constexpr int TIMEOUT_TRY_NUM = 10;
-constexpr double GIMBAL_MAX_VELOCITY = 180.0;   // Degrees per second
 constexpr int ENCODER_OFFSET_ROLL = 8192;
 constexpr int ENCODER_OFFSET_TILT = 21304;
 constexpr int ENCODER_RESOLUTION = 32768;
 constexpr double PI = 3.141592653589793238463;
+constexpr double RAD_TO_DEG = 180.0 / PI;
+constexpr double DEG_TO_RAD = PI / 180.0;
+constexpr double GIMBAL_ATTITUDE_LIMIT = 90.0;  // Degrees
 
 class GremsyWrapper : public rclcpp::Node
 {
@@ -48,12 +50,11 @@ class GremsyWrapper : public rclcpp::Node
 
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_rotation_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_encoder_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
 
-  // In degrees
+  // In radians
   rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_rotation_sub_;
-  // In degrees/s
+  // In radians/s
   rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_velocity_sub_;
 
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr enable_lock_mode_service_;
@@ -81,8 +82,6 @@ public:
     this->imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("~/imu_raw", 1);
     this->gimbal_rotation_pub_ =
       this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/rotation", 1);
-    this->gimbal_encoder_pub_ =
-      this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/encoders", 1);
     this->joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>("~/joint_states",
         1);
 
@@ -209,11 +208,11 @@ private:
   void set_gimbal_limits()
   {
     Gimbal_Interface::limit_angle_t limits;
-    limits.angle_min = params_.tilt_min;
-    limits.angle_max = params_.tilt_max;
+    limits.angle_min = params_.tilt_min * RAD_TO_DEG;
+    limits.angle_max = params_.tilt_max * RAD_TO_DEG;
     gimbal_interface_->set_limit_angle_pitch(limits);
-    limits.angle_min = params_.roll_min;
-    limits.angle_max = params_.roll_max;
+    limits.angle_min = params_.roll_min * RAD_TO_DEG;
+    limits.angle_max = params_.roll_max * RAD_TO_DEG;
     gimbal_interface_->set_limit_angle_roll(limits);
   }
 
@@ -258,28 +257,29 @@ private:
     imu_ros_msg.header.stamp = stamp;
     imu_pub_->publish(imu_ros_msg);
 
-    // Read and publish local motor pose (in degrees)
+    // Read and publish local motor pose (in radians)
     auto attitude = gimbal_interface_->get_gimbal_attitude();
     geometry_msgs::msg::Vector3Stamped rotation;
-    rotation.vector.x = attitude.roll;
-    rotation.vector.y = attitude.pitch;
-    rotation.vector.z = attitude.yaw;
+
+    if (abs(attitude.roll) > GIMBAL_ATTITUDE_LIMIT) {
+      attitude.roll -= copysign(GIMBAL_ATTITUDE_LIMIT * 2, attitude.roll);
+
+      attitude.pitch = copysign(GIMBAL_ATTITUDE_LIMIT * 2, attitude.pitch) - attitude.pitch;
+    }
+
+    // Pitch axis in inverted in our robot model
+    rotation.vector.x = attitude.roll * DEG_TO_RAD;
+    rotation.vector.y = -1 * attitude.pitch * DEG_TO_RAD;
+    rotation.vector.z = attitude.yaw * DEG_TO_RAD;
     rotation.header.stamp = stamp;
-    rotation.header.frame_id = "gimbal";
+    rotation.header.frame_id = "gremsy_base_link";
     gimbal_rotation_pub_->publish(rotation);
 
-    // Read and publish global encoder readings
+    // Publish joint state based on global encoder readings
     auto encoder_attitude = gimbal_interface_->get_gimbal_encoder();
-    rotation.vector.x = encoder_attitude.roll;
-    rotation.vector.y = encoder_attitude.pitch;
-    rotation.vector.z = encoder_attitude.yaw;
-    gimbal_encoder_pub_->publish(rotation);
-
-    // Publish joint state
     sensor_msgs::msg::JointState joint_state;
     joint_state.header.stamp = stamp;
-    joint_state.header.frame_id = "gimbal";
-    joint_state.name = {"gimbal_tilt_joint", "gimbal_roll_joint"};
+    joint_state.name = {"gremsy_tilt_joint", "gremsy_roll_joint"};
     joint_state.position = {get_angle_from_encoder(encoder_attitude.pitch, ENCODER_OFFSET_TILT),
       get_angle_from_encoder(encoder_attitude.roll, ENCODER_OFFSET_ROLL)};
     joint_state_pub_->publish(joint_state);
@@ -297,8 +297,8 @@ private:
 
     if (res == Gimbal_Protocol::SUCCESS) {
       attitude<float> cur_attitude = gimbal_interface_->get_gimbal_attitude();
-      if ((fabsf(cur_attitude.pitch - goal_->vector.y) <= 0.5f) &&
-        (fabsf(cur_attitude.roll - goal_->vector.x) <= 0.5f))
+      if ((abs(cur_attitude.pitch - goal_->vector.y) <= 0.5f) &&
+        (abs(cur_attitude.roll - goal_->vector.x) <= 0.5f))
       {
         RCLCPP_INFO(this->get_logger(), "Goal reached");
         goal_ = nullptr;
@@ -350,14 +350,18 @@ private:
 
     RCLCPP_INFO(this->get_logger(), "New goal received: x: '%.2f', y: '%.2f', z: '%.2f'",
         msg->vector.x, msg->vector.y, msg->vector.z);
+
+    msg->vector.x *= RAD_TO_DEG;
+    msg->vector.y *= RAD_TO_DEG;
+    msg->vector.z *= RAD_TO_DEG;
     goal_ = msg;
   }
 
   void desired_velocity_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg)
   {
-    // 180 degrees/s is the maximum speed for the gimbal
-    msg->vector.x = std::fmin(std::fmax(msg->vector.x, -GIMBAL_MAX_VELOCITY), GIMBAL_MAX_VELOCITY);
-    msg->vector.y = std::fmin(std::fmax(msg->vector.y, -GIMBAL_MAX_VELOCITY), GIMBAL_MAX_VELOCITY);
+    // PI rad/s is the maximum speed for the gimbal
+    msg->vector.x = std::fmin(std::fmax(msg->vector.x, -PI), PI);
+    msg->vector.y = std::fmin(std::fmax(msg->vector.y, -PI), PI);
     msg->vector.z = 0;
 
     RCLCPP_INFO(this->get_logger(),
@@ -366,7 +370,8 @@ private:
     // Disable goal if velocity is set
     goal_ = nullptr;
 
-    gimbal_interface_->set_gimbal_rotation_rate_sync(msg->vector.y, msg->vector.x, msg->vector.z);
+    gimbal_interface_->set_gimbal_rotation_rate_sync(msg->vector.y * RAD_TO_DEG,
+      msg->vector.x * RAD_TO_DEG, msg->vector.z * RAD_TO_DEG);
   }
 
   void enable_lock_mode_callback(
