@@ -54,7 +54,7 @@ gremsy_wrapper:
     default_value: 0.785398
     read_only: true
   roll_min:
-    type: int
+    type: double
     default_value: -0.785398
     read_only: true
   gyro_filter:
