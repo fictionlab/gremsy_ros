@@ -1250,23 +1250,14 @@ uint32_t Gimbal_Interface::get_gimbal_attitude_flag(void)
  * @ret: Gimbal encoder
  */
 attitude<int16_t> Gimbal_Interface::get_gimbal_encoder(void)
-{
+{ 
     pthread_mutex_lock(&_messages.mutex);
-    uint64_t timestamps = _messages.timestamps.mount_status;
+    /* Reset timestamps */
+    _messages.timestamps.mount_status = 0;
+    const mavlink_mount_status_t &mount = _messages.mount_status;
+    attitude<int16_t> encoder(mount.pointing_b, mount.pointing_a, mount.pointing_c);
     pthread_mutex_unlock(&_messages.mutex);
-
-    /* Check gimbal encoder value has changed*/
-    if (timestamps) {
-        pthread_mutex_lock(&_messages.mutex);
-        /* Reset timestamps */
-        _messages.timestamps.mount_status = 0;
-        const mavlink_mount_status_t &mount = _messages.mount_status;
-        attitude<int16_t> encoder(mount.pointing_b, mount.pointing_a, mount.pointing_c);
-        pthread_mutex_unlock(&_messages.mutex);
-        return encoder;
-    }
-
-    return attitude<int16_t>();
+    return encoder;
 }
 
 /**

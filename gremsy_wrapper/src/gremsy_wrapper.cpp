@@ -82,7 +82,7 @@ public:
     this->imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("~/imu_raw", 1);
     this->gimbal_rotation_pub_ =
       this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/rotation", 1);
-    this->joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>("~/joint_states",
+    this->joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>("/joint_states",
         1);
 
     // Subscriptions
