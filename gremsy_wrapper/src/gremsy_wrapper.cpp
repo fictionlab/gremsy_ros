@@ -194,10 +194,10 @@ private:
 
   void set_gimbal_stiffness_params()
   {
-    Gimbal_Interface::gimbal_motor_control_t tilt = {params_.tilt_stiffness,
-      params_.tilt_hold_strength};
-    Gimbal_Interface::gimbal_motor_control_t roll = {params_.roll_stiffness,
-      params_.roll_hold_strength};
+    Gimbal_Interface::gimbal_motor_control_t tilt = {static_cast<uint8_t>(params_.tilt_stiffness),
+      static_cast<uint8_t>(params_.tilt_hold_strength)};
+    Gimbal_Interface::gimbal_motor_control_t roll = {static_cast<uint8_t>(params_.roll_stiffness),
+      static_cast<uint8_t>(params_.roll_hold_strength)};
     // Pan axis not used in tilt-roll 2-axis gimbal - using default values
     Gimbal_Interface::gimbal_motor_control_t pan = {50, 30};
     const uint8_t gyro_filter = params_.gyro_filter;
@@ -399,7 +399,7 @@ private:
   }
 
   void return_home_callback(
-    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    const std::shared_ptr<std_srvs::srv::Trigger::Request>/*request*/,
     const std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
     goal_ = nullptr;
@@ -430,7 +430,7 @@ private:
   }
 
   void reboot_callback(
-    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    const std::shared_ptr<std_srvs::srv::Trigger::Request>/*request*/,
     const std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
     if (gimbal_interface_->set_gimbal_reboot() == Gimbal_Protocol::SUCCESS) {
