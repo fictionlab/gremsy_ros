@@ -26,8 +26,8 @@ namespace gremsy_wrapper
 // This number is never provided - this is an educated guess
 constexpr double GIMBAL_IMU_ACCEL_SCALE = 0.00119634146;
 constexpr int TIMEOUT_TRY_NUM = 10;
-constexpr int ENCODER_OFFSET_ROLL = 8192;
-constexpr int ENCODER_OFFSET_TILT = 21304;
+constexpr int ENCODER_OFFSET_ROLL = 13500;
+constexpr int ENCODER_OFFSET_TILT = 29400;
 constexpr int ENCODER_RESOLUTION = 32768;
 constexpr double PI = 3.141592653589793238463;
 constexpr double RAD_TO_DEG = 180.0 / PI;
