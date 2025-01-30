@@ -16,7 +16,7 @@
 #include "std_srvs/srv/set_bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
-#include "gremsy_wrapper_parameters.hpp"
+#include "gremsy_wrapper/gremsy_wrapper_parameters.hpp"
 
 using namespace std::chrono_literals;
 
