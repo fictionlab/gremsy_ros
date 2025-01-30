@@ -49,7 +49,8 @@ class GremsyWrapper : public rclcpp::Node
   int roll_stiffness_;
 
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_rotation_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_attitude_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_encoder_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
 
   // In radians
@@ -80,8 +81,10 @@ public:
 
     // Publishers
     this->imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("~/imu_raw", 1);
-    this->gimbal_rotation_pub_ =
-      this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/rotation", 1);
+    this->gimbal_attitude_pub_ =
+      this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/attitude", 1);
+    this->gimbal_encoder_pub_ =
+      this->create_publisher<geometry_msgs::msg::Vector3Stamped>("~/encoder", 1);
     this->joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>("joint_states",
         1);
 
@@ -259,7 +262,7 @@ private:
 
     // Read and publish local motor pose (in radians)
     auto attitude = gimbal_interface_->get_gimbal_attitude();
-    geometry_msgs::msg::Vector3Stamped rotation;
+    geometry_msgs::msg::Vector3Stamped attitude_msg;
 
     if (abs(attitude.roll) > GIMBAL_ATTITUDE_LIMIT) {
       attitude.roll -= copysign(GIMBAL_ATTITUDE_LIMIT * 2, attitude.roll);
@@ -268,20 +271,26 @@ private:
     }
 
     // Pitch axis in inverted in our robot model
-    rotation.vector.x = attitude.roll * DEG_TO_RAD;
-    rotation.vector.y = -1 * attitude.pitch * DEG_TO_RAD;
-    rotation.vector.z = attitude.yaw * DEG_TO_RAD;
-    rotation.header.stamp = stamp;
-    rotation.header.frame_id = "gremsy_base_link";
-    gimbal_rotation_pub_->publish(rotation);
+    attitude_msg.vector.x = attitude.roll * DEG_TO_RAD;
+    attitude_msg.vector.y = -1 * attitude.pitch * DEG_TO_RAD;
+    attitude_msg.vector.z = attitude.yaw * DEG_TO_RAD;
+    attitude_msg.header.stamp = stamp;
+    gimbal_attitude_pub_->publish(attitude_msg);
 
     // Publish joint state based on global encoder readings
-    auto encoder_attitude = gimbal_interface_->get_gimbal_encoder();
+    auto encoder = gimbal_interface_->get_gimbal_encoder();
+    geometry_msgs::msg::Vector3Stamped encoder_msg;
+
+    encoder_msg.header.stamp = stamp;
+    encoder_msg.header.frame_id = "gremsy_base_link";
+    encoder_msg.vector.x = get_angle_from_encoder(encoder.roll, ENCODER_OFFSET_ROLL);
+    encoder_msg.vector.y = get_angle_from_encoder(encoder.pitch, ENCODER_OFFSET_TILT);
+    gimbal_encoder_pub_->publish(encoder_msg);
+
     sensor_msgs::msg::JointState joint_state;
     joint_state.header.stamp = stamp;
-    joint_state.name = {"gremsy_tilt_joint", "gremsy_roll_joint"};
-    joint_state.position = {get_angle_from_encoder(encoder_attitude.pitch, ENCODER_OFFSET_TILT),
-      get_angle_from_encoder(encoder_attitude.roll, ENCODER_OFFSET_ROLL)};
+    joint_state.name = {"gremsy_roll_joint", "gremsy_tilt_joint"};
+    joint_state.position = {encoder_msg.vector.x, encoder_msg.vector.y};
     joint_state_pub_->publish(joint_state);
   }
 
