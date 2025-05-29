@@ -25,16 +25,13 @@ add_library(${PROJECT_NAME} SHARED
 )
 
 target_link_libraries(${PROJECT_NAME}
+  ${geometry_msgs_TARGETS}
+  gremsy_sdk::gremsy_sdk
   gremsy_wrapper_parameters
   rclcpp::rclcpp
   rclcpp_components::component
-)
-
-ament_target_dependencies(${PROJECT_NAME}
-  sensor_msgs
-  std_srvs
-  geometry_msgs
-  gremsy_sdk
+  ${sensor_msgs_TARGETS}
+  ${std_srvs_TARGETS}
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}

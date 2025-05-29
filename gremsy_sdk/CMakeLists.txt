@@ -15,13 +15,14 @@ add_library(${PROJECT_NAME} SHARED
   src/gimbal_protocol.cpp
   src/serial_port.cpp
 )
-ament_target_dependencies(${PROJECT_NAME}
-  mavlink
+target_link_libraries(${PROJECT_NAME}
+  ${mavlink_LIBRARIES}
 )
 target_include_directories(${PROJECT_NAME}
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+    ${mavlink_INCLUDE_DIRS}
 )
 
 add_executable(mavlink_control
