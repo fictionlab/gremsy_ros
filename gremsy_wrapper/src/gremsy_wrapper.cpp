@@ -66,6 +66,7 @@ class GremsyWrapper : public rclcpp::Node
   rclcpp::TimerBase::SharedPtr poll_timer_;
   rclcpp::TimerBase::SharedPtr goal_timer_;
   rclcpp::TimerBase::SharedPtr check_timer_;
+  rclcpp::TimerBase::SharedPtr connect_timer_;
 
   ParamListener param_listener_;
   Params params_;
@@ -114,23 +115,18 @@ public:
     serial_port_->start();
     gimbal_interface_->start();
 
-    while (!gimbal_interface_->present()) {
-      RCLCPP_INFO(this->get_logger(),
-          "Gimbal interface not present, waiting for it to be connected");
-      rclcpp::sleep_for(500ms);
-    }
-
-    this->setup_gimbal();
-
-    gimbal_mode_ = params_.gimbal_mode_on_startup;
-
-    this->set_gimbal_mode(gimbal_mode_);
-
     poll_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 /
-        params_.state_poll_rate), std::bind(&GremsyWrapper::gimbal_state_timer_callback, this));
+        params_.state_poll_rate), std::bind(&GremsyWrapper::gimbal_state_timer_callback, this),
+        nullptr, false);
     goal_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 /
-        params_.goal_push_rate), std::bind(&GremsyWrapper::gimbal_goal_timer_callback, this));
-    check_timer_ = this->create_wall_timer(1s, std::bind(&GremsyWrapper::check_parameters, this));
+        params_.goal_push_rate), std::bind(&GremsyWrapper::gimbal_goal_timer_callback, this),
+        nullptr, false);
+    check_timer_ = this->create_wall_timer(1s,
+        std::bind(&GremsyWrapper::check_timer_callback, this),
+        nullptr, false);
+
+    connect_timer_ = this->create_wall_timer(1s,
+        std::bind(&GremsyWrapper::connect_timer_callback, this));
   }
 
   ~GremsyWrapper()
@@ -140,6 +136,29 @@ public:
   }
 
 private:
+  void connect_timer_callback()
+  {
+    if (gimbal_interface_->present()) {
+      this->setup_gimbal();
+      gimbal_mode_ = params_.gimbal_mode_on_startup;
+      this->set_gimbal_mode(gimbal_mode_);
+
+      poll_timer_->reset();
+      goal_timer_->reset();
+      check_timer_->reset();
+
+      connect_timer_->cancel();
+    } else {
+      RCLCPP_WARN(this->get_logger(), "Gimbal interface not present, retrying connection");
+    }
+  }
+
+  void check_timer_callback()
+  {
+    this->check_parameters();
+    this->check_gimbal_connected();
+  }
+
   void update_parameters()
   {
     param_listener_.refresh_dynamic_parameters();
@@ -151,6 +170,17 @@ private:
     if (param_listener_.is_old(params_)) {
       this->update_parameters();
       this->set_gimbal_stiffness_params();
+    }
+  }
+
+  void check_gimbal_connected()
+  {
+    if (!gimbal_interface_->present()) {
+      RCLCPP_ERROR(this->get_logger(), "Gimbal disconnected");
+      poll_timer_->cancel();
+      goal_timer_->cancel();
+      check_timer_->cancel();
+      connect_timer_->reset();
     }
   }
 
