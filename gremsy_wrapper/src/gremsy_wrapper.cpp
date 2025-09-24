@@ -26,13 +26,12 @@ namespace gremsy_wrapper
 // This number is never provided - this is an educated guess
 constexpr double GIMBAL_IMU_ACCEL_SCALE = 0.00119634146;
 constexpr int TIMEOUT_TRY_NUM = 10;
-constexpr int ENCODER_OFFSET_ROLL = 13500;
-constexpr int ENCODER_OFFSET_TILT = 29400;
-constexpr int ENCODER_RESOLUTION = 32768;
 constexpr double PI = 3.141592653589793238463;
 constexpr double RAD_TO_DEG = 180.0 / PI;
 constexpr double DEG_TO_RAD = PI / 180.0;
 constexpr double GIMBAL_ATTITUDE_LIMIT = 90.0;  // Degrees
+constexpr double ENCODER_OFFSET_ROLL = PI / 2.0;  // 90 degrees
+constexpr double ENCODER_OFFSET_TILT = 0.0;
 
 class GremsyWrapper : public rclcpp::Node
 {
@@ -196,7 +195,7 @@ private:
     gimbal_interface_->set_msg_attitude_status_rate(params_.state_poll_rate);
     gimbal_interface_->set_msg_raw_imu_rate(params_.state_poll_rate);
 
-    gimbal_interface_->set_gimbal_encoder_type_send(true);
+    gimbal_interface_->set_gimbal_encoder_type_send(false);
     gimbal_interface_->request_gimbal_device_info();
 
     this->set_gimbal_stiffness_params();
@@ -313,8 +312,8 @@ private:
 
     encoder_msg.header.stamp = stamp;
     encoder_msg.header.frame_id = "gremsy_base_link";
-    encoder_msg.vector.x = get_angle_from_encoder(encoder.roll, ENCODER_OFFSET_ROLL);
-    encoder_msg.vector.y = get_angle_from_encoder(encoder.pitch, ENCODER_OFFSET_TILT);
+    encoder_msg.vector.x = static_cast<double>(encoder.roll) * DEG_TO_RAD + ENCODER_OFFSET_ROLL;
+    encoder_msg.vector.y = static_cast<double>(encoder.pitch) * DEG_TO_RAD + ENCODER_OFFSET_TILT;
     gimbal_encoder_pub_->publish(encoder_msg);
 
     sensor_msgs::msg::JointState joint_state;
@@ -367,17 +366,6 @@ private:
     imu_msg.orientation.w = 1;
 
     return imu_msg;
-  }
-
-  // In Rad
-  double get_angle_from_encoder(int16_t encoder_value, int16_t encoder_offset)
-  {
-    int offset_value = encoder_value + encoder_offset;
-    // Make sure that offset value is within the encoder resolution
-    offset_value = (offset_value + ENCODER_RESOLUTION) % (2 * ENCODER_RESOLUTION) -
-      ENCODER_RESOLUTION;
-
-    return PI * static_cast<double>(offset_value) / static_cast<double>(ENCODER_RESOLUTION);
   }
 
   void desired_rotation_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg)
