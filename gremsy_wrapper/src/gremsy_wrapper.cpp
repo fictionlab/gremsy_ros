@@ -30,8 +30,6 @@ constexpr double PI = 3.141592653589793238463;
 constexpr double RAD_TO_DEG = 180.0 / PI;
 constexpr double DEG_TO_RAD = PI / 180.0;
 constexpr double GIMBAL_ATTITUDE_LIMIT = 90.0;  // Degrees
-constexpr double ENCODER_OFFSET_ROLL = PI / 2.0;  // 90 degrees
-constexpr double ENCODER_OFFSET_TILT = 0.0;
 
 class GremsyWrapper : public rclcpp::Node
 {
@@ -46,6 +44,10 @@ class GremsyWrapper : public rclcpp::Node
   int tilt_stiffness_;
   int roll_hold_strength_;
   int roll_stiffness_;
+
+  // Offsets in radians
+  double encoder_offset_roll_;
+  double encoder_offset_tilt_;
 
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_attitude_pub_;
@@ -183,6 +185,21 @@ private:
     }
   }
 
+  void apply_offsets()
+  {
+    Gimbal_Protocol::result_t res = gimbal_interface_->set_gimbal_return_home_sync();
+    if (res == Gimbal_Protocol::SUCCESS) {
+      auto encoder = gimbal_interface_->get_gimbal_encoder();
+      encoder_offset_roll_ = -1.0 * encoder.roll;
+      encoder_offset_tilt_ = -1.0 * encoder.tilt;
+
+      RCLCPP_INFO(this->get_logger(), "Gimbal offsets applied: roll: %.2f deg, tilt: %.2f deg",
+          encoder_offset_roll_ * RAD_TO_DEG, encoder_offset_tilt_ * RAD_TO_DEG);
+    } else {
+      RCLCPP_ERROR(this->get_logger(), "Failed to apply gimbal offsets");
+    }
+  }
+
   void setup_gimbal()
   {
     Gimbal_Interface::fw_version_t fw = gimbal_interface_->get_gimbal_version();
@@ -222,6 +239,8 @@ private:
         roll.holdstrength, roll.stiffness);
     RCLCPP_INFO(this->get_logger(), "Gyro filter: %d", gyro_filter);
     RCLCPP_INFO(this->get_logger(), "Output filter: %d\n", output_filter);
+
+    this->apply_offsets();
   }
 
   void set_gimbal_stiffness_params()
@@ -312,8 +331,8 @@ private:
 
     encoder_msg.header.stamp = stamp;
     encoder_msg.header.frame_id = "gremsy_base_link";
-    encoder_msg.vector.x = static_cast<double>(encoder.roll) * DEG_TO_RAD + ENCODER_OFFSET_ROLL;
-    encoder_msg.vector.y = static_cast<double>(encoder.pitch) * DEG_TO_RAD + ENCODER_OFFSET_TILT;
+    encoder_msg.vector.x = (static_cast<double>(encoder.roll) + encoder_offset_roll_) * RAD_TO_DEG;
+    encoder_msg.vector.y = (static_cast<double>(encoder.pitch) + encoder_offset_tilt_) * RAD_TO_DEG;
     gimbal_encoder_pub_->publish(encoder_msg);
 
     sensor_msgs::msg::JointState joint_state;
