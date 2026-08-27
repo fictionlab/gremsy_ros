@@ -57,7 +57,6 @@ class GremsyWrapper : public rclcpp::Node
   // In radians/s
   rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_velocity_sub_;
 
-  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr enable_lock_mode_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr return_home_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reboot_service_;
 
@@ -103,9 +102,6 @@ public:
         std::bind(&GremsyWrapper::desired_velocity_callback, this, std::placeholders::_1));
 
     // Services
-    this->enable_lock_mode_service_ = this->create_service<std_srvs::srv::SetBool>("~/lock_mode",
-        std::bind(&GremsyWrapper::enable_lock_mode_callback, this, std::placeholders::_1,
-        std::placeholders::_2));
     this->return_home_service_ = this->create_service<std_srvs::srv::Trigger>("~/return_home",
         std::bind(&GremsyWrapper::return_home_callback, this, std::placeholders::_1,
         std::placeholders::_2));
@@ -436,30 +432,6 @@ private:
 
     gimbal_interface_->set_gimbal_rotation_rate_sync(msg->vector.y * RAD_TO_DEG,
       msg->vector.x * RAD_TO_DEG, msg->vector.z * RAD_TO_DEG);
-  }
-
-  void enable_lock_mode_callback(
-    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
-    const std::shared_ptr<std_srvs::srv::SetBool::Response> response)
-  {
-    int new_mode = request->data ? 1 : 2;
-
-    if (new_mode == gimbal_mode_) {
-      response->success = true;
-      response->message = "Gimbal is already in requested mode.";
-
-      RCLCPP_INFO(this->get_logger(), "Gimbal mode unchanged, is already in %s mode.",
-          gimbal_mode_ == 1 ? "lock" : "follow");
-    } else {
-      gimbal_mode_ = new_mode;
-      this->set_gimbal_mode(gimbal_mode_);
-
-      response->success = true;
-      response->message = "Gimbal mode successfully changed.";
-
-      RCLCPP_INFO(this->get_logger(), "Changing gimbal mode to %s.",
-          gimbal_mode_ == 1 ? "lock" : "follow");
-    }
   }
 
   void return_home_callback(
