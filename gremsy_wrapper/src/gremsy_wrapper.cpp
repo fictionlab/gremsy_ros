@@ -408,9 +408,6 @@ private:
     msg->vector.y = std::fmin(std::fmax(msg->vector.y, params_.tilt_min), params_.tilt_max);
     msg->vector.z = 0;  // Pan axis not used in tilt-roll 2-axis gimbal
 
-    RCLCPP_INFO(this->get_logger(), "New goal received: x: '%.2f', y: '%.2f', z: '%.2f'",
-        msg->vector.x, msg->vector.y, msg->vector.z);
-
     msg->vector.x *= RAD_TO_DEG;
     msg->vector.y *= RAD_TO_DEG;
     msg->vector.z *= RAD_TO_DEG;
@@ -424,9 +421,6 @@ private:
     msg->vector.y = std::fmin(std::fmax(msg->vector.y, -PI), PI);
     msg->vector.z = 0;
 
-    RCLCPP_INFO(this->get_logger(),
-        "New joint velocities requested: x: '%.2f', y: '%.2f', z: '%.2f'", msg->vector.x,
-        msg->vector.y, msg->vector.z);
     // Disable goal if velocity is set
     goal_ = nullptr;
 

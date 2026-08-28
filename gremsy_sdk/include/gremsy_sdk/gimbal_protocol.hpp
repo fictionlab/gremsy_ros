@@ -40,7 +40,7 @@
 
 #include "serial_port.hpp"
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if (DEBUG == 1)
 # define GSDK_DebugMsg(fmt, args ...)        do {printf("\33[39m" fmt "\n\r",  ## args); } while(0);
