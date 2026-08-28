@@ -154,7 +154,7 @@ private:
       goal_timer_->reset();
       check_timer_->reset();
     } else {
-      RCLCPP_WARN(this->get_logger(), "Gimbal interface not present, retrying connection");
+      RCLCPP_WARN(this->get_logger(), "Gimbal interface not present, retrying connection...");
     }
   }
 
@@ -304,10 +304,10 @@ private:
         rclcpp::sleep_for(500ms);
         cur_attitude = gimbal_interface_->get_gimbal_attitude();
       }
-      RCLCPP_INFO(this->get_logger(), "Reached home position.");
+      RCLCPP_INFO(this->get_logger(), "Reached home position");
       return true;
     } else {
-      RCLCPP_ERROR(this->get_logger(), "Failed to send return home command.");
+      RCLCPP_ERROR(this->get_logger(), "Failed to send return home command");
       return false;
     }
   }
@@ -434,9 +434,9 @@ private:
   {
     response->success = this->return_home();
     if (response->success) {
-      response->message = "Gimbal returned to home position.";
+      response->message = "Gimbal returned to home position";
     } else {
-      response->message = "Failed to return gimbal to home position";
+      response->message = "Failed to reach home position in time";
     }
   }
 
@@ -466,17 +466,17 @@ private:
 
       if (reboot_done) {
         response->success = true;
-        response->message = "Gimbal rebooted.";
-        RCLCPP_INFO(this->get_logger(), "Gimbal rebooted.");
+        response->message = "Gimbal rebooted";
+        RCLCPP_INFO(this->get_logger(), "Gimbal rebooted");
       } else {
         response->success = false;
-        response->message = "Gimbal reboot timed out.";
-        RCLCPP_ERROR(this->get_logger(), "Gimbal reboot timed out.");
+        response->message = "Gimbal reboot timed out";
+        RCLCPP_ERROR(this->get_logger(), "Gimbal reboot timed out");
       }
     } else {
       response->success = false;
-      response->message = "Failed to send reboot command.";
-      RCLCPP_ERROR(this->get_logger(), "Failed to send reboot command.");
+      response->message = "Failed to send reboot command";
+      RCLCPP_ERROR(this->get_logger(), "Failed to send reboot command");
     }
   }
 };
