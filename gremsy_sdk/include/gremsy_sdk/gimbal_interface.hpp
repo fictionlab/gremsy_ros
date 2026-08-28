@@ -118,6 +118,14 @@ public:
         GIMBAL_STATE_ERROR       = 0x40
     };
 
+    enum reboot_action_t
+    {
+        REBOOT_ACTION_REBOOT   = 0x01,
+        REBOOT_ACTION_SHUTDOWN = 0x02,
+        
+        MAX_REBOOT_ACTION     
+    };
+
     /**
      * @brief Firmware version
      *
@@ -254,11 +262,18 @@ public:
     bool present();
 
     /**
-     * @brief  This function reboot the gimbal
+     * @brief  This function reboots the gimbal (with firmware lower that 7.8.7)
      * @param: NONE
      * @ret: result
      */
     Gimbal_Protocol::result_t set_gimbal_reboot(void);
+
+    /**
+     * @brief  This function reboots the gimbal (with firmware 7.8.7 or higher)
+     * @param: type see reboot_action_t
+     * @ret: result
+     */
+    Gimbal_Protocol::result_t set_gimbal_reboot(reboot_action_t reboot);
 
     /**
      * @brief  This function set gimbal to rc input mode and block to wait for gimbal response

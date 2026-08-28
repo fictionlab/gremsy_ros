@@ -508,7 +508,7 @@ void Gimbal_Interface::param_process(void)
 //   GIMBAL Command
 // ------------------------------------------------------------------------------
 /**
- * @brief  This function reboot the gimbal
+ * @brief  This function reboots the gimbal (with firmware lower that 7.8.7)
  * @param: NONE
  * @ret: result
  */
@@ -527,6 +527,35 @@ Gimbal_Protocol::result_t Gimbal_Interface::set_gimbal_reboot(void)
         0,
         0
     };
+    return _gimbal_proto->send_command_long(MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN, param);
+}
+
+/**
+ * @brief  This function reboots the gimbal (with firmware 7.8.7 or higher)
+ * @param: type see reboot_action_t
+ * @ret: result
+ */
+Gimbal_Protocol::result_t Gimbal_Interface::set_gimbal_reboot(reboot_action_t reboot)
+{
+    if(reboot >= MAX_REBOOT_ACTION){
+        GSDK_DebugError("ERROR: Invalid reboot action\n");
+        return Gimbal_Protocol::ERROR;
+    }
+
+    if (_gimbal_proto == nullptr) {
+        return Gimbal_Protocol::ERROR;
+    }
+
+    const float param[7] = {
+        0,
+        0,
+        (float)reboot,
+        _gimbal.compid,  // param 4
+        0,
+        0,
+        0
+    };
+
     return _gimbal_proto->send_command_long(MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN, param);
 }
 
