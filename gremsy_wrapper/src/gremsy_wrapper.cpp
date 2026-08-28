@@ -450,16 +450,35 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Request>/*request*/,
     const std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
-    if (gimbal_interface_->set_gimbal_reboot() == Gimbal_Protocol::SUCCESS) {
-      // Wait for reboot to complete
-      while (gimbal_interface_->get_gimbal_status().state != Gimbal_Interface::GIMBAL_STATE_ON) {
-        rclcpp::sleep_for(500ms);
-      }
-      goal_ = nullptr;
+    if (gimbal_interface_->set_gimbal_reboot(Gimbal_Interface::REBOOT_ACTION_REBOOT) == Gimbal_Protocol::SUCCESS) {
+      bool reboot_started = false;
+      bool reboot_done = false;
+      int retries = 100; // 100 * 100ms = 10s timeout
+      while (retries-- > 0) {
+        auto status = gimbal_interface_->get_gimbal_status();
+        if (!reboot_started && status.state != Gimbal_Interface::GIMBAL_STATE_ON) {
+          reboot_started = true;
+        }
 
-      response->success = true;
-      response->message = "Gimbal rebooted.";
-      RCLCPP_INFO(this->get_logger(), "Gimbal rebooted.");
+        if (reboot_started && status.state == Gimbal_Interface::GIMBAL_STATE_ON) {
+            reboot_done = true;
+            break;
+        }
+        rclcpp::sleep_for(100ms);
+      }
+      // Let the gimbal run align config
+      rclcpp::sleep_for(3000ms);
+      goal_ = home_goal_;
+
+      if (reboot_done) {
+        response->success = true;
+        response->message = "Gimbal rebooted.";
+        RCLCPP_INFO(this->get_logger(), "Gimbal rebooted.");
+      } else {
+        response->success = false;
+        response->message = "Gimbal reboot timed out.";
+        RCLCPP_ERROR(this->get_logger(), "Gimbal reboot timed out.");
+      }
     } else {
       response->success = false;
       response->message = "Failed to send reboot command.";
