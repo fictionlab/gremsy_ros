@@ -452,7 +452,7 @@ private:
     {
       bool reboot_started = false;
       bool reboot_done = false;
-      int retries = 100; // 100 * 100ms = 10s timeout
+      int retries = 100;  // 100 * 100ms = 10s timeout
       while (retries-- > 0) {
         auto status = gimbal_interface_->get_gimbal_status();
         if (!reboot_started && status.state != Gimbal_Interface::GIMBAL_STATE_ON) {
