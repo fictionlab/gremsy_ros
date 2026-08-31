@@ -288,15 +288,18 @@ private:
   bool return_home()
   {
     goal_ = nullptr;
-    
-    Gimbal_Protocol::result_t res = gimbal_interface_->set_gimbal_rotation_sync(home_goal_->vector.y,
+
+    Gimbal_Protocol::result_t res =
+      gimbal_interface_->set_gimbal_rotation_sync(home_goal_->vector.y,
         home_goal_->vector.x, home_goal_->vector.z);
 
     if (res == Gimbal_Protocol::SUCCESS) {
       attitude<float> cur_attitude = gimbal_interface_->get_gimbal_attitude();
       int timeout = 0;
 
-      while(abs(cur_attitude.pitch - home_goal_->vector.y) > 0.5f || abs(cur_attitude.roll - home_goal_->vector.x) > 0.5f) {
+      while(abs(cur_attitude.pitch - home_goal_->vector.y) > 0.5f ||
+        abs(cur_attitude.roll - home_goal_->vector.x) > 0.5f)
+      {
         if (timeout++ > TIMEOUT_TRY_NUM) {
           RCLCPP_ERROR(this->get_logger(), "Failed to reach home position in time");
           return false;
@@ -444,7 +447,9 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Request>/*request*/,
     const std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
-    if (gimbal_interface_->set_gimbal_reboot(Gimbal_Interface::REBOOT_ACTION_REBOOT) == Gimbal_Protocol::SUCCESS) {
+    if (gimbal_interface_->set_gimbal_reboot(Gimbal_Interface::REBOOT_ACTION_REBOOT) ==
+      Gimbal_Protocol::SUCCESS)
+    {
       bool reboot_started = false;
       bool reboot_done = false;
       int retries = 100; // 100 * 100ms = 10s timeout
@@ -455,8 +460,8 @@ private:
         }
 
         if (reboot_started && status.state == Gimbal_Interface::GIMBAL_STATE_ON) {
-            reboot_done = true;
-            break;
+          reboot_done = true;
+          break;
         }
         rclcpp::sleep_for(100ms);
       }
