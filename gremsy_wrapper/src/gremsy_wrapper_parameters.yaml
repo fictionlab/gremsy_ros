@@ -1,7 +1,7 @@
 gremsy_wrapper:
   com_port:
     type: string
-    default_value: '/dev/ttyS4'
+    default_value: '/dev/ttyS5'
     read_only: true
   baud_rate:
     type: int
@@ -17,7 +17,7 @@ gremsy_wrapper:
     read_only: true
   gimbal_mode_on_startup:
     type: int
-    default_value: 1 # 1: lock mode, 2: follow mode
+    default_value: 2 # 1: lock mode, 2: follow mode
     read_only: true
     validation:
       one_of<>: [[1, 2]]
@@ -55,7 +55,7 @@ gremsy_wrapper:
     read_only: true
   roll_min:
     type: double
-    default_value: -0.785398
+    default_value: -4.71238898
     read_only: true
   gyro_filter:
     type: int

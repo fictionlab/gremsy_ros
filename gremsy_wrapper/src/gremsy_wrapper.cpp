@@ -57,11 +57,11 @@ class GremsyWrapper : public rclcpp::Node
   // In radians/s
   rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gimbal_velocity_sub_;
 
-  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr enable_lock_mode_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr return_home_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reboot_service_;
 
   geometry_msgs::msg::Vector3Stamped::SharedPtr goal_;
+  geometry_msgs::msg::Vector3Stamped::SharedPtr home_goal_;
   rclcpp::TimerBase::SharedPtr poll_timer_;
   rclcpp::TimerBase::SharedPtr goal_timer_;
   rclcpp::TimerBase::SharedPtr check_timer_;
@@ -76,6 +76,11 @@ public:
     param_listener_(get_node_parameters_interface())
   {
     goal_ = nullptr;
+
+    home_goal_ = std::make_shared<geometry_msgs::msg::Vector3Stamped>();
+    home_goal_->vector.x = 0.0 - ENCODER_OFFSET_ROLL * RAD_TO_DEG;
+    home_goal_->vector.y = 0.0 - ENCODER_OFFSET_TILT * RAD_TO_DEG;
+    home_goal_->vector.z = 0.0;
 
     this->update_parameters();
 
@@ -97,9 +102,6 @@ public:
         std::bind(&GremsyWrapper::desired_velocity_callback, this, std::placeholders::_1));
 
     // Services
-    this->enable_lock_mode_service_ = this->create_service<std_srvs::srv::SetBool>("~/lock_mode",
-        std::bind(&GremsyWrapper::enable_lock_mode_callback, this, std::placeholders::_1,
-        std::placeholders::_2));
     this->return_home_service_ = this->create_service<std_srvs::srv::Trigger>("~/return_home",
         std::bind(&GremsyWrapper::return_home_callback, this, std::placeholders::_1,
         std::placeholders::_2));
@@ -141,14 +143,18 @@ private:
       this->setup_gimbal();
       gimbal_mode_ = params_.gimbal_mode_on_startup;
       this->set_gimbal_mode(gimbal_mode_);
+      // Let the gimbal parameters settle
+      rclcpp::sleep_for(1000ms);
+      RCLCPP_INFO(this->get_logger(), "Gimbal connected");
+
+      connect_timer_->cancel();
+      this->return_home();
 
       poll_timer_->reset();
       goal_timer_->reset();
       check_timer_->reset();
-
-      connect_timer_->cancel();
     } else {
-      RCLCPP_WARN(this->get_logger(), "Gimbal interface not present, retrying connection");
+      RCLCPP_WARN(this->get_logger(), "Gimbal interface not present, retrying connection...");
     }
   }
 
@@ -279,6 +285,33 @@ private:
     }
   }
 
+  bool return_home()
+  {
+    goal_ = nullptr;
+    
+    Gimbal_Protocol::result_t res = gimbal_interface_->set_gimbal_rotation_sync(home_goal_->vector.y,
+        home_goal_->vector.x, home_goal_->vector.z);
+
+    if (res == Gimbal_Protocol::SUCCESS) {
+      attitude<float> cur_attitude = gimbal_interface_->get_gimbal_attitude();
+      int timeout = 0;
+
+      while(abs(cur_attitude.pitch - home_goal_->vector.y) > 0.5f || abs(cur_attitude.roll - home_goal_->vector.x) > 0.5f) {
+        if (timeout++ > TIMEOUT_TRY_NUM) {
+          RCLCPP_ERROR(this->get_logger(), "Failed to reach home position in time");
+          return false;
+        }
+        rclcpp::sleep_for(500ms);
+        cur_attitude = gimbal_interface_->get_gimbal_attitude();
+      }
+      RCLCPP_INFO(this->get_logger(), "Reached home position");
+      return true;
+    } else {
+      RCLCPP_ERROR(this->get_logger(), "Failed to send return home command");
+      return false;
+    }
+  }
+
   void gimbal_state_timer_callback()
   {
     rclcpp::Time stamp = this->get_clock()->now();
@@ -375,9 +408,6 @@ private:
     msg->vector.y = std::fmin(std::fmax(msg->vector.y, params_.tilt_min), params_.tilt_max);
     msg->vector.z = 0;  // Pan axis not used in tilt-roll 2-axis gimbal
 
-    RCLCPP_INFO(this->get_logger(), "New goal received: x: '%.2f', y: '%.2f', z: '%.2f'",
-        msg->vector.x, msg->vector.y, msg->vector.z);
-
     msg->vector.x *= RAD_TO_DEG;
     msg->vector.y *= RAD_TO_DEG;
     msg->vector.z *= RAD_TO_DEG;
@@ -391,9 +421,6 @@ private:
     msg->vector.y = std::fmin(std::fmax(msg->vector.y, -PI), PI);
     msg->vector.z = 0;
 
-    RCLCPP_INFO(this->get_logger(),
-        "New joint velocities requested: x: '%.2f', y: '%.2f', z: '%.2f'", msg->vector.x,
-        msg->vector.y, msg->vector.z);
     // Disable goal if velocity is set
     goal_ = nullptr;
 
@@ -401,58 +428,15 @@ private:
       msg->vector.x * RAD_TO_DEG, msg->vector.z * RAD_TO_DEG);
   }
 
-  void enable_lock_mode_callback(
-    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
-    const std::shared_ptr<std_srvs::srv::SetBool::Response> response)
-  {
-    int new_mode = request->data ? 1 : 2;
-
-    if (new_mode == gimbal_mode_) {
-      response->success = true;
-      response->message = "Gimbal is already in requested mode.";
-
-      RCLCPP_INFO(this->get_logger(), "Gimbal mode unchanged, is already in %s mode.",
-          gimbal_mode_ == 1 ? "lock" : "follow");
-    } else {
-      gimbal_mode_ = new_mode;
-      this->set_gimbal_mode(gimbal_mode_);
-
-      response->success = true;
-      response->message = "Gimbal mode successfully changed.";
-
-      RCLCPP_INFO(this->get_logger(), "Changing gimbal mode to %s.",
-          gimbal_mode_ == 1 ? "lock" : "follow");
-    }
-  }
-
   void return_home_callback(
     const std::shared_ptr<std_srvs::srv::Trigger::Request>/*request*/,
     const std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
-    goal_ = nullptr;
-    Gimbal_Protocol::result_t res = gimbal_interface_->set_gimbal_return_home_sync();
-
-    if (res == Gimbal_Protocol::SUCCESS) {
-      attitude<float> cur_attitude = gimbal_interface_->get_gimbal_attitude();
-      int timeout = 0;
-
-      while (cur_attitude.pitch > 0.5f || cur_attitude.roll > 0.5f) {
-        if (timeout++ > TIMEOUT_TRY_NUM) {
-          response->success = false;
-          response->message = "Failed to return gimbal to home position in time";
-          RCLCPP_ERROR(this->get_logger(), "Failed to return gimbal to home position in time");
-          return;
-        }
-        rclcpp::sleep_for(500ms);
-        cur_attitude = gimbal_interface_->get_gimbal_attitude();
-      }
-      response->success = true;
-      response->message = "Gimbal returned to home position.";
-      RCLCPP_INFO(this->get_logger(), "Gimbal returned to home position.");
+    response->success = this->return_home();
+    if (response->success) {
+      response->message = "Gimbal returned to home position";
     } else {
-      response->success = false;
-      response->message = "Failed to send return home command .";
-      RCLCPP_ERROR(this->get_logger(), "Failed to send return home command.");
+      response->message = "Failed to reach home position in time";
     }
   }
 
@@ -460,20 +444,39 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Request>/*request*/,
     const std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
-    if (gimbal_interface_->set_gimbal_reboot() == Gimbal_Protocol::SUCCESS) {
-      // Wait for reboot to complete
-      while (gimbal_interface_->get_gimbal_status().state != Gimbal_Interface::GIMBAL_STATE_ON) {
-        rclcpp::sleep_for(500ms);
-      }
-      goal_ = nullptr;
+    if (gimbal_interface_->set_gimbal_reboot(Gimbal_Interface::REBOOT_ACTION_REBOOT) == Gimbal_Protocol::SUCCESS) {
+      bool reboot_started = false;
+      bool reboot_done = false;
+      int retries = 100; // 100 * 100ms = 10s timeout
+      while (retries-- > 0) {
+        auto status = gimbal_interface_->get_gimbal_status();
+        if (!reboot_started && status.state != Gimbal_Interface::GIMBAL_STATE_ON) {
+          reboot_started = true;
+        }
 
-      response->success = true;
-      response->message = "Gimbal rebooted.";
-      RCLCPP_INFO(this->get_logger(), "Gimbal rebooted.");
+        if (reboot_started && status.state == Gimbal_Interface::GIMBAL_STATE_ON) {
+            reboot_done = true;
+            break;
+        }
+        rclcpp::sleep_for(100ms);
+      }
+      // Let the gimbal run align config
+      rclcpp::sleep_for(3000ms);
+      goal_ = home_goal_;
+
+      if (reboot_done) {
+        response->success = true;
+        response->message = "Gimbal rebooted";
+        RCLCPP_INFO(this->get_logger(), "Gimbal rebooted");
+      } else {
+        response->success = false;
+        response->message = "Gimbal reboot timed out";
+        RCLCPP_ERROR(this->get_logger(), "Gimbal reboot timed out");
+      }
     } else {
       response->success = false;
-      response->message = "Failed to send reboot command.";
-      RCLCPP_ERROR(this->get_logger(), "Failed to send reboot command.");
+      response->message = "Failed to send reboot command";
+      RCLCPP_ERROR(this->get_logger(), "Failed to send reboot command");
     }
   }
 };
